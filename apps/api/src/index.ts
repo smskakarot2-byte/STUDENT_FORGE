@@ -33,12 +33,27 @@ app.use(compression());
 app.use('/api', apiLimiter);
 
 // Health check
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    environment: config.nodeEnv,
-  });
+app.get('/health', async (req, res) => {
+  try {
+    // Check database connection
+    const { prisma } = await import('./config/database.js');
+    await prisma.$queryRaw`SELECT 1`;
+    
+    res.json({
+      status: 'healthy',
+      database: 'connected',
+      timestamp: new Date().toISOString(),
+      environment: config.nodeEnv,
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'unhealthy',
+      database: 'disconnected',
+      timestamp: new Date().toISOString(),
+      environment: config.nodeEnv,
+      error: isProduction ? 'Database connection failed' : (error as Error).message,
+    });
+  }
 });
 
 // API Routes

@@ -202,29 +202,189 @@ interface AIProvider {
 
 ## Deployment
 
-### Production Build
+### Deploy to Render + Neon (Recommended Free Stack)
+
+This guide shows you how to deploy ExamForge for free using Render for hosting and Neon for the database.
+
+#### Prerequisites
+
+1. **GitHub Account** - Your code should be pushed to a GitHub repository
+2. **Render Account** - Sign up at [render.com](https://render.com)
+3. **Neon Account** - Sign up at [neon.tech](https://neon.tech) for a free PostgreSQL database
+4. **OpenAI API Key** (or compatible AI provider) - Get one at [platform.openai.com](https://platform.openai.com)
+
+#### Step 1: Set Up Neon Database
+
+1. Go to [neon.tech](https://neon.tech) and create a free account
+2. Create a new project named `examforge`
+3. Copy the connection string (it looks like `postgresql://user:password@host/neondb`)
+4. In the Neon dashboard, run this SQL to enable pgvector:
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS vector;
+   ```
+
+#### Step 2: Push Code to GitHub
+
 ```bash
-npm run build
+git init
+git add .
+git commit -m "Initial commit"
+git branch -M main
+git remote add origin https://github.com/yourusername/examforge.git
+git push -u origin main
 ```
 
-### Environment Variables (Production)
-- Set `NODE_ENV=production`
-- Configure secure `AUTH_SECRET`
-- Use production database URL
-- Configure cloud storage (S3-compatible)
-- Set up reverse proxy (nginx)
+#### Step 3: Deploy to Render
 
-### Health Check
-Endpoint: `GET /api/health`
+**Option A: Using render.yaml (Recommended)**
 
-Returns:
-```json
-{
-  "status": "healthy",
-  "database": "connected",
-  "timestamp": "2024-01-01T00:00:00Z"
-}
+1. Make sure your `render.yaml` file is committed to your repository
+2. Log in to [Render Dashboard](https://dashboard.render.com)
+3. Click **New +** → **Blueprint**
+4. Connect your GitHub repository
+5. Select the `main` branch
+6. Click **Apply**
+
+Render will automatically:
+- Create a PostgreSQL database (or use your Neon connection string if you modified render.yaml)
+- Deploy the backend API service
+- Deploy the frontend static site
+- Configure environment variables
+
+**Option B: Manual Setup**
+
+If you prefer manual setup or want to use Neon instead of Render's database:
+
+1. **Create the Backend Service:**
+   - Go to Dashboard → New + → Web Service
+   - Connect your GitHub repository
+   - Configure:
+     - **Name:** `examforge-api`
+     - **Region:** Choose closest to your users
+     - **Branch:** `main`
+     - **Root Directory:** Leave blank
+     - **Runtime:** `Node`
+     - **Build Command:** `cd apps/api && npm install && npm run build`
+     - **Start Command:** `cd apps/api && npm run start`
+     - **Instance Type:** Free
+   - Add Environment Variables (see below)
+   - Add Disk:
+     - Name: `uploads`
+     - Mount Path: `/opt/render/project/src/uploads`
+     - Size: 1 GB
+   - Health Check Path: `/api/health`
+
+2. **Create the Frontend Service:**
+   - Go to Dashboard → New + → Static Site
+   - Connect your GitHub repository
+   - Configure:
+     - **Name:** `examforge-web`
+     - **Branch:** `main`
+     - **Build Command:** `cd apps/web && npm install && npm run build`
+     - **Publish Directory:** `apps/web/dist`
+   - Add Environment Variable:
+     - `VITE_API_URL`: Your backend URL (e.g., `https://examforge-api.onrender.com`)
+
+3. **Set Environment Variables:**
+
+For the backend service, add these environment variables:
+
+| Key | Value |
+|-----|-------|
+| `NODE_ENV` | `production` |
+| `DATABASE_URL` | Your Neon connection string |
+| `AUTH_SECRET` | Generate a random 32+ character string |
+| `AI_PROVIDER_API_KEY` | Your OpenAI API key |
+| `AI_PROVIDER_BASE_URL` | `https://api.openai.com/v1` |
+| `AI_MODEL` | `gpt-4o-mini` |
+| `AI_EMBEDDING_MODEL` | `text-embedding-3-small` |
+| `STORAGE_TYPE` | `local` |
+| `STORAGE_PATH` | `/opt/render/project/src/uploads` |
+| `APP_URL` | Your frontend URL (e.g., `https://examforge-web.onrender.com`) |
+| `API_URL` | Your backend URL (e.g., `https://examforge-api.onrender.com`) |
+| `CORS_ORIGINS` | Same as APP_URL |
+| `ENABLE_OCR` | `true` |
+| `ENABLE_VECTOR_SEARCH` | `true` |
+
+#### Step 4: Run Database Migrations
+
+After deployment, you need to run migrations:
+
+**Option A: Via Render Dashboard**
+1. Go to your backend service
+2. Click **Shell** tab
+3. Run: `cd apps/api && npx prisma migrate deploy`
+4. Run: `cd apps/api && npm run db:seed` (optional, for demo data)
+
+**Option B: Locally**
+```bash
+# Set your DATABASE_URL to the production Neon URL
+export DATABASE_URL="your-neon-connection-string"
+cd apps/api
+npx prisma migrate deploy
+npm run db:seed
 ```
+
+#### Step 5: Verify Deployment
+
+1. Visit your frontend URL (e.g., `https://examforge-web.onrender.com`)
+2. Check the health endpoint: `https://examforge-api.onrender.com/api/health`
+3. You should see: `{"status": "healthy", "database": "connected", ...}`
+
+### Alternative Hosting Options
+
+#### Vercel (Frontend) + Render (Backend) + Neon (Database)
+
+For better CDN performance:
+
+1. **Frontend on Vercel:**
+   ```bash
+   cd apps/web
+   npm install
+   npm run build
+   # Deploy to Vercel
+   vercel deploy
+   ```
+
+2. **Backend on Render:** Follow Step 3 above
+
+3. **Database on Neon:** Follow Step 1 above
+
+#### Railway
+
+Railway offers an alternative with generous free tier:
+
+1. Push code to GitHub
+2. Go to [railway.app](https://railway.app)
+3. Create new project from GitHub
+4. Add PostgreSQL plugin
+5. Configure environment variables
+6. Deploy
+
+### Production Checklist
+
+- [ ] Database migrated successfully
+- [ ] Health check returns healthy status
+- [ ] Environment variables configured correctly
+- [ ] AI provider API key set
+- [ ] CORS origins include frontend URL
+- [ ] File upload disk mounted (backend)
+- [ ] HTTPS enabled (automatic on Render)
+- [ ] Admin account created (check logs for initial setup)
+- [ ] Test authentication flow
+- [ ] Test file upload functionality
+- [ ] Monitor logs for errors
+
+### Scaling Considerations
+
+When your app grows:
+
+1. **Upgrade Database:** Move from free Neon to paid plan for more storage
+2. **Upgrade Render Services:** Move from free to paid plans for more resources
+3. **Add CDN:** Use Cloudflare for additional caching
+4. **File Storage:** Migrate from local storage to S3/Cloudflare R2
+5. **Background Jobs:** Add Redis for job queues
+6. **Monitoring:** Add Sentry, LogRocket, or similar tools
 
 ## Testing
 
