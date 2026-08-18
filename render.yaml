@@ -1,0 +1,110 @@
+services:
+  # Backend API Service
+  - type: web
+    name: examforge-api
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: cd apps/api && npm install && npm run build
+    startCommand: cd apps/api && npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+        description: "Set this to your Neon PostgreSQL connection string after deployment"
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: AI_PROVIDER_API_KEY
+        sync: false
+      - key: AI_PROVIDER_BASE_URL
+        value: https://api.openai.com/v1
+      - key: AI_MODEL
+        value: gpt-4o-mini
+      - key: AI_EMBEDDING_MODEL
+        value: text-embedding-3-small
+      - key: AI_MAX_TOKENS
+        value: 4096
+      - key: STORAGE_TYPE
+        value: local
+      - key: STORAGE_PATH
+        value: /opt/render/project/src/uploads
+      - key: MAX_FILE_SIZE
+        value: 52428800
+      - key: APP_URL
+        fromService:
+          name: examforge-web
+          type: static
+          envVarKey: DEPLOY_URL
+      - key: API_URL
+        fromService:
+          name: examforge-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: PORT
+        value: 3000
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: 100
+      - key: CORS_ORIGINS
+        fromService:
+          name: examforge-web
+          type: static
+          envVarKey: DEPLOY_URL
+      - key: ENABLE_OCR
+        value: true
+      - key: ENABLE_VECTOR_SEARCH
+        value: true
+      - key: ENABLE_STUDY_GROUPS
+        value: true
+      - key: ENABLE_REFERRALS
+        value: true
+      - key: FREE_MAX_COURSES
+        value: 3
+      - key: FREE_MAX_AI_REQUESTS_PER_DAY
+        value: 50
+      - key: FREE_MAX_STORAGE_MB
+        value: 500
+      - key: FREE_MAX_EXAM_SIMULATIONS_PER_MONTH
+        value: 5
+      - key: PRO_MAX_COURSES
+        value: 999
+      - key: PRO_MAX_AI_REQUESTS_PER_DAY
+        value: 500
+      - key: PRO_MAX_STORAGE_MB
+        value: 10000
+      - key: PRO_MAX_EXAM_SIMULATIONS_PER_MONTH
+        value: 999
+    disk:
+      name: uploads
+      mountPath: /opt/render/project/src/uploads
+      sizeGB: 1
+    healthCheckPath: /api/health
+
+  # Frontend Static Site
+  - type: static
+    name: examforge-web
+    env: static
+    region: oregon
+    plan: free
+    buildCommand: cd apps/web && npm install && npm run build
+    staticPublishPath: ./apps/web/dist
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: VITE_API_URL
+        fromService:
+          name: examforge-api
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
